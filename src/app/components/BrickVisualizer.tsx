@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useState } from 'react';
 
 interface BrickVisualizerProps {
   data: Record<string, string>;
@@ -16,14 +16,38 @@ const BrickVisualizer: React.FC<BrickVisualizerProps> = ({
   onBrickClick
 }) => {
   const highlightedBrickRef = useRef<HTMLDivElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [isScrolling, setIsScrolling] = useState(false);
+  const [initialLoad, setInitialLoad] = useState(true);
+  
+  // On initial load, add animation
+  useEffect(() => {
+    if (initialLoad) {
+      setTimeout(() => setInitialLoad(false), 500);
+    }
+  }, [initialLoad]);
   
   // Scroll to highlighted brick if specified
   useEffect(() => {
-    if (currentHighlightPos && highlightedBrickRef.current) {
-      highlightedBrickRef.current.scrollIntoView({ 
-        behavior: 'smooth',
-        block: 'center'
+    if (currentHighlightPos && highlightedBrickRef.current && containerRef.current) {
+      setIsScrolling(true);
+      
+      // Calculate position to scroll to center the highlighted brick
+      const brick = highlightedBrickRef.current;
+      const container = containerRef.current;
+      const brickTop = brick.offsetTop;
+      const brickHeight = brick.offsetHeight;
+      const containerHeight = container.offsetHeight;
+      const scrollPosition = brickTop - (containerHeight / 2) + (brickHeight / 2);
+      
+      // Smooth scroll to position
+      container.scrollTo({
+        top: scrollPosition,
+        behavior: 'smooth'
       });
+      
+      // Reset scrolling state after animation
+      setTimeout(() => setIsScrolling(false), 800);
     }
   }, [currentHighlightPos]);
   
@@ -40,6 +64,38 @@ const BrickVisualizer: React.FC<BrickVisualizerProps> = ({
     // Replace backslashes with line breaks
     const lines = text.split('\\');
     
+    // If search is active, highlight the matching text
+    if (searchQuery.trim() !== '') {
+      return lines.map((line, index) => {
+        const lowerLine = line.toLowerCase();
+        const lowerQuery = searchQuery.toLowerCase();
+        const queryIndex = lowerLine.indexOf(lowerQuery);
+        
+        if (queryIndex !== -1) {
+          // Split the line to highlight the matching part
+          const before = line.substring(0, queryIndex);
+          const match = line.substring(queryIndex, queryIndex + searchQuery.length);
+          const after = line.substring(queryIndex + searchQuery.length);
+          
+          return (
+            <React.Fragment key={index}>
+              {before}
+              <span className="font-bold bg-yellow-200">{match}</span>
+              {after}
+              {index < lines.length - 1 && <br />}
+            </React.Fragment>
+          );
+        }
+        
+        return (
+          <React.Fragment key={index}>
+            {line}
+            {index < lines.length - 1 && <br />}
+          </React.Fragment>
+        );
+      });
+    }
+    
     return lines.map((line, index) => (
       <React.Fragment key={index}>
         {line}
@@ -55,18 +111,20 @@ const BrickVisualizer: React.FC<BrickVisualizerProps> = ({
     const isEmpty = !text;
     const highlight = shouldHighlight(text);
     const isCurrentHighlight = key === currentHighlightPos;
+    const brickClasses = [
+      isEmpty ? 'empty-brick' : 'brick',
+      highlight ? 'highlight' : '',
+      isCurrentHighlight ? 'current-highlight' : '',
+      'w-full h-16 p-2 text-center flex items-center justify-center text-xs',
+      !isEmpty ? 'cursor-pointer' : '',
+      initialLoad ? `opacity-0 animate-[fadeIn_0.5s_ease-in_${0.05 * col + 0.01 * row}s_forwards]` : ''
+    ].filter(Boolean).join(' ');
     
     return (
       <div 
         key={key}
         ref={isCurrentHighlight ? highlightedBrickRef : null}
-        className={`
-          ${isEmpty ? 'empty-brick' : 'brick'} 
-          ${highlight ? 'highlight' : ''}
-          ${isCurrentHighlight ? 'current-highlight' : ''}
-          w-full h-16 p-2 text-center flex items-center justify-center text-xs
-          ${!isEmpty ? 'cursor-pointer' : ''}
-        `}
+        className={brickClasses}
         title={text}
         onClick={() => !isEmpty && onBrickClick && onBrickClick(key)}
       >
@@ -116,20 +174,40 @@ const BrickVisualizer: React.FC<BrickVisualizerProps> = ({
     rows.push(renderRow(row));
   }
 
+  // Render a scrolling indicator
+  const renderScrollIndicator = () => {
+    if (isScrolling) {
+      return (
+        <div className="absolute inset-0 pointer-events-none z-10">
+          <div className="absolute h-full w-full flex items-center justify-center">
+            <div className="h-24 w-24 rounded-full bg-blue-500 bg-opacity-10 flex items-center justify-center animate-ping">
+              <div className="h-12 w-12 rounded-full bg-blue-500 bg-opacity-20"></div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+    return null;
+  };
+
   return (
-    <div className="brick-visualizer h-full flex flex-col">
-      <div className="text-center mb-2">
-        <div className="text-xs inline-block px-2 py-1 bg-black text-white">
+    <div className="brick-visualizer h-full flex flex-col relative">
+      <div className="text-center mb-4">
+        <div className="text-xs inline-block px-3 py-1.5 bg-gray-800 text-white rounded-full">
           Row {maxRow} (top)
         </div>
       </div>
       
-      <div className="vertical-bricks overflow-y-auto flex-grow border border-black">
+      <div 
+        ref={containerRef}
+        className="vertical-bricks relative flex-grow overflow-y-auto custom-scrollbar bg-gray-50 rounded border border-gray-200"
+      >
+        {renderScrollIndicator()}
         {rows}
       </div>
       
-      <div className="text-center mt-2">
-        <div className="text-xs inline-block px-2 py-1 bg-black text-white">
+      <div className="text-center mt-4">
+        <div className="text-xs inline-block px-3 py-1.5 bg-gray-800 text-white rounded-full">
           Row 1 (bottom)
         </div>
       </div>
